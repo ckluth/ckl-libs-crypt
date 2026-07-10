@@ -11,3 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Symmetric (AES) encryption/decryption for strings, byte arrays, files, and
   folders, reporting outcomes via `CKL.Libs.ResultPattern`.
+- Password-based overloads of every `ICryptoService` encrypt/decrypt method
+  (string, byte array, file, folder): derive the key from a password via
+  `DeriveKeyFromPassword` and delegate to the byte[]-key method. The
+  generated salt is prepended to the output (ahead of the IV/ciphertext),
+  so the result is self-contained — decrypting needs only the original
+  password.

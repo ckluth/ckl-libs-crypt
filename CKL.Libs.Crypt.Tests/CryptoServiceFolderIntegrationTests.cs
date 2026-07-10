@@ -79,4 +79,34 @@ public class CryptoServiceFolderIntegrationTests
 
         Assert.That(encryptResult.Succeeded, Is.False);
     }
+
+    [Test]
+    public void EncryptFolder_ThenDecryptFolder_WithPassword_RoundTripsNestedStructure()
+    {
+        SeedNestedFiles();
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+
+        var encryptResult = CryptoService.EncryptFolder(_sourceFolder, encryptedPath, "correct horse battery staple");
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFolder(encryptedPath, _destinationFolder, "correct horse battery staple");
+
+        Assert.That(decryptResult.Succeeded, Is.True);
+        Assert.That(File.ReadAllText(Path.Combine(_destinationFolder, "root.txt")), Is.EqualTo("root file"));
+        Assert.That(File.ReadAllText(Path.Combine(_destinationFolder, "sub", "nested.txt")), Is.EqualTo("nested file"));
+    }
+
+    [Test]
+    public void DecryptFolder_WithPassword_WrongPassword_ReturnsFailedResult()
+    {
+        SeedNestedFiles();
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+
+        var encryptResult = CryptoService.EncryptFolder(_sourceFolder, encryptedPath, "correct-password");
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFolder(encryptedPath, _destinationFolder, "wrong-password");
+
+        Assert.That(decryptResult.Succeeded, Is.False);
+    }
 }

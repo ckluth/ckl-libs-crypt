@@ -11,8 +11,23 @@ internal static class FileCryptoCore
 {
     internal static void EncryptFile(string sourceFilePath, string destinationFilePath, byte[] key)
     {
-        using var sourceStream = File.OpenRead(sourceFilePath);
         using var destinationStream = File.Create(destinationFilePath);
+        EncryptFileToStream(sourceFilePath, destinationStream, key);
+    }
+
+    internal static void DecryptFile(string sourceFilePath, string destinationFilePath, byte[] key)
+    {
+        using var sourceStream = File.OpenRead(sourceFilePath);
+        DecryptStreamToFile(sourceStream, destinationFilePath, key);
+    }
+
+    /// <summary>
+    /// Compresses then encrypts into an already-open <paramref name="destinationStream"/> — the
+    /// password-based overloads use this to write a salt prefix ahead of the IV/ciphertext.
+    /// </summary>
+    internal static void EncryptFileToStream(string sourceFilePath, Stream destinationStream, byte[] key)
+    {
+        using var sourceStream = File.OpenRead(sourceFilePath);
         using var aes = PrepareEncryptingAes(destinationStream, key);
         using var encryptor = aes.CreateEncryptor();
         using var cryptoStream = new CryptoStream(destinationStream, encryptor, CryptoStreamMode.Write, leaveOpen: true);
@@ -20,9 +35,12 @@ internal static class FileCryptoCore
         sourceStream.CopyTo(gzipStream);
     }
 
-    internal static void DecryptFile(string sourceFilePath, string destinationFilePath, byte[] key)
+    /// <summary>
+    /// Decrypts then decompresses from an already-positioned <paramref name="sourceStream"/> —
+    /// the password-based overloads use this after consuming the salt prefix.
+    /// </summary>
+    internal static void DecryptStreamToFile(Stream sourceStream, string destinationFilePath, byte[] key)
     {
-        using var sourceStream = File.OpenRead(sourceFilePath);
         using var aes = PrepareDecryptingAes(sourceStream, key);
         using var decryptor = aes.CreateDecryptor();
         using var cryptoStream = new CryptoStream(sourceStream, decryptor, CryptoStreamMode.Read, leaveOpen: true);

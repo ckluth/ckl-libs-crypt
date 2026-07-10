@@ -11,38 +11,46 @@ internal static class FolderCryptoCore
 {
     internal static void EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key)
     {
-        var tempZipPath = Path.GetTempFileName();
-        try
+        WithTempZip(tempZipPath =>
         {
-            File.Delete(tempZipPath); // ZipFile.CreateFromDirectory requires a non-existent target.
-            ZipFile.CreateFromDirectory(sourceFolderPath, tempZipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
-            EncryptZipToDestination(tempZipPath, destinationFilePath, key);
-        }
-        finally
-        {
-            File.Delete(tempZipPath);
-        }
+            CreateZip(sourceFolderPath, tempZipPath);
+            using var destinationStream = File.Create(destinationFilePath);
+            EncryptZipToStream(tempZipPath, destinationStream, key);
+        });
     }
 
     internal static void DecryptFolder(string sourceFilePath, string destinationFolderPath, byte[] key)
     {
-        var tempZipPath = Path.GetTempFileName();
-        try
+        WithTempZip(tempZipPath =>
         {
-            DecryptSourceToZip(sourceFilePath, tempZipPath, key);
-            Directory.CreateDirectory(destinationFolderPath);
-            ZipFile.ExtractToDirectory(tempZipPath, destinationFolderPath, overwriteFiles: true);
-        }
-        finally
-        {
-            File.Delete(tempZipPath);
-        }
+            using (var sourceStream = File.OpenRead(sourceFilePath))
+            {
+                DecryptStreamToZip(sourceStream, tempZipPath, key);
+            }
+
+            ExtractZip(tempZipPath, destinationFolderPath);
+        });
     }
 
-    private static void EncryptZipToDestination(string zipPath, string destinationFilePath, byte[] key)
+    /// <summary>Zips <paramref name="sourceFolderPath"/> into a fresh archive at <paramref name="zipDestinationPath"/>.</summary>
+    internal static void CreateZip(string sourceFolderPath, string zipDestinationPath) =>
+        ZipFile.CreateFromDirectory(sourceFolderPath, zipDestinationPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+
+    /// <summary>Extracts the archive at <paramref name="zipPath"/> into <paramref name="destinationFolderPath"/>.</summary>
+    internal static void ExtractZip(string zipPath, string destinationFolderPath)
+    {
+        Directory.CreateDirectory(destinationFolderPath);
+        ZipFile.ExtractToDirectory(zipPath, destinationFolderPath, overwriteFiles: true);
+    }
+
+    /// <summary>
+    /// Encrypts the archive at <paramref name="zipPath"/> into an already-open
+    /// <paramref name="destinationStream"/> — the password-based overloads use this to write a
+    /// salt prefix ahead of the IV/ciphertext.
+    /// </summary>
+    internal static void EncryptZipToStream(string zipPath, Stream destinationStream, byte[] key)
     {
         using var zipStream = File.OpenRead(zipPath);
-        using var destinationStream = File.Create(destinationFilePath);
         var iv = AesCryptoCore.GenerateIv();
         destinationStream.Write(iv, 0, iv.Length);
         using var aes = AesCryptoCore.CreateAes(key, iv);
@@ -51,14 +59,33 @@ internal static class FolderCryptoCore
         zipStream.CopyTo(cryptoStream);
     }
 
-    private static void DecryptSourceToZip(string sourceFilePath, string zipPath, byte[] key)
+    /// <summary>
+    /// Decrypts from an already-positioned <paramref name="sourceStream"/> into the archive at
+    /// <paramref name="zipPath"/> — the password-based overloads use this after consuming the
+    /// salt prefix.
+    /// </summary>
+    internal static void DecryptStreamToZip(Stream sourceStream, string zipPath, byte[] key)
     {
-        using var sourceStream = File.OpenRead(sourceFilePath);
         var iv = AesCryptoCore.ReadIv(sourceStream);
         using var aes = AesCryptoCore.CreateAes(key, iv);
         using var decryptor = aes.CreateDecryptor();
         using var cryptoStream = new CryptoStream(sourceStream, decryptor, CryptoStreamMode.Read, leaveOpen: true);
         using var zipStream = File.Create(zipPath);
         cryptoStream.CopyTo(zipStream);
+    }
+
+    /// <summary>Runs <paramref name="action"/> with a fresh temp zip path, deleting it afterwards.</summary>
+    internal static void WithTempZip(Action<string> action)
+    {
+        var tempZipPath = Path.GetTempFileName();
+        try
+        {
+            File.Delete(tempZipPath); // ZipFile.CreateFromDirectory requires a non-existent target.
+            action(tempZipPath);
+        }
+        finally
+        {
+            File.Delete(tempZipPath);
+        }
     }
 }

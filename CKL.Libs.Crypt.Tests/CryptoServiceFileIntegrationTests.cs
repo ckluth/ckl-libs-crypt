@@ -85,4 +85,38 @@ public class CryptoServiceFileIntegrationTests
 
         Assert.That(encryptResult.Succeeded, Is.False);
     }
+
+    [Test]
+    public void EncryptFile_ThenDecryptFile_WithPassword_RoundTripsOriginalContent()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "source.txt");
+        var encryptedPath = Path.Combine(_tempDirectory, "source.enc");
+        var decryptedPath = Path.Combine(_tempDirectory, "source.decrypted.txt");
+        var originalContent = "The quick brown fox jumps over the lazy dog.";
+        File.WriteAllText(sourcePath, originalContent);
+
+        var encryptResult = CryptoService.EncryptFile(sourcePath, encryptedPath, "correct horse battery staple");
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFile(encryptedPath, decryptedPath, "correct horse battery staple");
+
+        Assert.That(decryptResult.Succeeded, Is.True);
+        Assert.That(File.ReadAllText(decryptedPath), Is.EqualTo(originalContent));
+    }
+
+    [Test]
+    public void DecryptFile_WithPassword_WrongPassword_ReturnsFailedResult()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "source.txt");
+        var encryptedPath = Path.Combine(_tempDirectory, "source.enc");
+        var decryptedPath = Path.Combine(_tempDirectory, "source.decrypted.txt");
+        File.WriteAllText(sourcePath, "content");
+
+        var encryptResult = CryptoService.EncryptFile(sourcePath, encryptedPath, "correct-password");
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFile(encryptedPath, decryptedPath, "wrong-password");
+
+        Assert.That(decryptResult.Succeeded, Is.False);
+    }
 }

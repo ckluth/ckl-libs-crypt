@@ -34,6 +34,14 @@ CryptoService.DecryptFolder("my-folder.enc", "my-folder-restored", key);
 // Password-based key derivation (PBKDF2)
 var derived = CryptoService.DeriveKeyFromPassword("a strong passphrase");
 // derived.Value!.Key, derived.Value!.Salt — persist the salt alongside the ciphertext
+
+// Password-based overloads — derive the key internally and prepend the
+// generated salt to the output, so only the original password is needed to decrypt
+var encryptedWithPw = CryptoService.EncryptString("Hello, CKL!", "a strong passphrase");
+var decryptedWithPw = CryptoService.DecryptString(encryptedWithPw.Value!, "a strong passphrase");
+
+CryptoService.EncryptFile("document.pdf", "document.pdf.enc", "a strong passphrase");
+CryptoService.DecryptFile("document.pdf.enc", "document.pdf", "a strong passphrase");
 ```
 
 Every method returns `Result`/`Result<TValue>` from `CKL.Libs.ResultPattern` —
@@ -49,6 +57,11 @@ check `.Succeeded` before using `.Value`; on failure, `.ErrorMessage` and
 - **Folders** — zipped (which already compresses), then the archive is
   encrypted as a single output file; decrypting reverses both steps and
   extracts back into a destination folder.
+- **Password-based overloads** — every encrypt/decrypt method has a
+  `string password` overload. Encrypting derives a random salt + key via
+  PBKDF2 and prepends the salt to the output, ahead of the IV/ciphertext;
+  decrypting reads the salt back off, re-derives the key, and proceeds as
+  usual — no separate salt management needed.
 
 ## For maintainers
 

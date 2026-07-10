@@ -124,12 +124,12 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, byte[] key)
+    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, byte[] key, bool captureLastAccessTime = true)
     {
         try
         {
             using var destinationStream = File.Create(destinationFilePath);
-            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, RawKeyHeader());
+            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, RawKeyHeader(), captureLastAccessTime);
             return Result.Success;
         }
         catch (Exception ex)
@@ -139,13 +139,13 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, string password)
+    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, string password, bool captureLastAccessTime = true)
     {
         try
         {
             var (key, header) = PasswordHeader(password);
             using var destinationStream = File.Create(destinationFilePath);
-            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, header);
+            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, header, captureLastAccessTime);
             return Result.Success;
         }
         catch (Exception ex)
@@ -185,11 +185,11 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key, string? workingDirectory = null)
+    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key, string? workingDirectory = null, bool captureLastAccessTime = true)
     {
         try
         {
-            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, RawKeyHeader(), workingDirectory);
+            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, RawKeyHeader(), workingDirectory, captureLastAccessTime);
             return Result.Success;
         }
         catch (Exception ex)
@@ -199,12 +199,12 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, string? workingDirectory = null)
+    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, string? workingDirectory = null, bool captureLastAccessTime = true)
     {
         try
         {
             var (key, header) = PasswordHeader(password);
-            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, header, workingDirectory);
+            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, header, workingDirectory, captureLastAccessTime);
             return Result.Success;
         }
         catch (Exception ex)
@@ -267,10 +267,10 @@ public sealed class CryptoService : ICryptoService
     private static Func<CryptoHeader, byte[]> ResolveKey(string password) =>
         header => KeyDerivation.DeriveFromHeader(password, header);
 
-    private static void EncryptFolderToFile(string sourceFolderPath, string destinationFilePath, byte[] key, CryptoHeader header, string? workingDirectory) =>
+    private static void EncryptFolderToFile(string sourceFolderPath, string destinationFilePath, byte[] key, CryptoHeader header, string? workingDirectory, bool captureLastAccessTime) =>
         FolderCryptoCore.WithTempZip(tempZipPath =>
         {
-            FolderCryptoCore.CreateZip(sourceFolderPath, tempZipPath);
+            FolderCryptoCore.CreateZip(sourceFolderPath, tempZipPath, captureLastAccessTime);
             using var destinationStream = File.Create(destinationFilePath);
             FolderCryptoCore.EncryptZipToStream(tempZipPath, destinationStream, key, header);
         }, workingDirectory);

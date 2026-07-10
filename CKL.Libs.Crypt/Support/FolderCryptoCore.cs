@@ -37,15 +37,48 @@ internal static class FolderCryptoCore
         cryptoStream.CopyTo(zipStream);
     }
 
-    /// <summary>Zips <paramref name="sourceFolderPath"/> into a fresh archive at <paramref name="zipDestinationPath"/>.</summary>
-    internal static void CreateZip(string sourceFolderPath, string zipDestinationPath) =>
-        ZipFile.CreateFromDirectory(sourceFolderPath, zipDestinationPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+    /// <summary>
+    /// Zips <paramref name="sourceFolderPath"/> into a fresh archive at <paramref name="zipDestinationPath"/>.
+    /// A <c>__ckl_timestamps.json</c> manifest (see ADR 0010, <see cref="FolderTimestamps"/>) is
+    /// written as the first entry, capturing the original <c>CreationTime</c>/<c>LastWriteTime</c>/
+    /// <c>LastAccessTime</c> of the root folder, every subdirectory, and every file.
+    /// </summary>
+    internal static void CreateZip(string sourceFolderPath, string zipDestinationPath, bool captureLastAccessTime = true)
+    {
+        var manifestJson = FolderTimestamps.BuildManifestJson(sourceFolderPath, captureLastAccessTime);
 
-    /// <summary>Extracts the archive at <paramref name="zipPath"/> into <paramref name="destinationFolderPath"/>.</summary>
+        using var zip = ZipFile.Open(zipDestinationPath, ZipArchiveMode.Create);
+
+        var manifestEntry = zip.CreateEntry(FolderTimestamps.ManifestEntryName, CompressionLevel.Optimal);
+        using (var writer = new StreamWriter(manifestEntry.Open()))
+        {
+            writer.Write(manifestJson);
+        }
+
+        foreach (var directoryPath in Directory.EnumerateDirectories(sourceFolderPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceFolderPath, directoryPath).Replace(Path.DirectorySeparatorChar, '/') + "/";
+            zip.CreateEntry(relativePath);
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(sourceFolderPath, "*", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(sourceFolderPath, filePath).Replace(Path.DirectorySeparatorChar, '/');
+            zip.CreateEntryFromFile(filePath, relativePath, CompressionLevel.Optimal);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the archive at <paramref name="zipPath"/> into <paramref name="destinationFolderPath"/>,
+    /// then applies and removes the <c>__ckl_timestamps.json</c> manifest (see ADR 0010) if present.
+    /// </summary>
     internal static void ExtractZip(string zipPath, string destinationFolderPath)
     {
         Directory.CreateDirectory(destinationFolderPath);
         ZipFile.ExtractToDirectory(zipPath, destinationFolderPath, overwriteFiles: true);
+
+        var manifestPath = Path.Combine(destinationFolderPath, FolderTimestamps.ManifestEntryName);
+        FolderTimestamps.ApplyAndRemoveManifest(destinationFolderPath, manifestPath);
     }
 
     /// <summary>

@@ -5,6 +5,34 @@ All notable changes to `CKL.Libs.Crypt` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-07-10
+
+**Additive, non-breaking release.** Preserves the original file-system
+timestamps (`CreationTime`, `LastWriteTime`, `LastAccessTime`) across
+encrypt/decrypt for files and folders (see `ckl-builder` ADR 0010).
+v2.0.0 containers remain readable unchanged.
+
+### Added
+
+- **Timestamp round-trip for single files.** `EncryptFile`/`DecryptFile`
+  capture the source file's `CreationTime`, `LastWriteTime`, and
+  `LastAccessTime` into the container header and restore them on decrypt,
+  after the destination file is fully written. A new `captureLastAccessTime`
+  parameter (default `true`) lets callers opt out of capturing
+  `LastAccessTime`.
+- **Timestamp round-trip for folders.** `EncryptFolder`/`DecryptFolder` write
+  a `__ckl_timestamps.json` manifest as the first entry of the intermediate
+  zip, capturing the root folder's and every subdirectory's/file's original
+  timestamps; the manifest is applied and removed after extraction. A source
+  folder containing a file already named `__ckl_timestamps.json` is rejected
+  with a clear `Result` failure before encryption proceeds. `EncryptFolder`
+  also gained a `captureLastAccessTime` parameter (default `true`).
+- **Header `flags` byte.** The v2 container header gained a `flags` byte
+  (between `version` and `kdf-id`) marking whether the optional 24-byte
+  timestamp block follows the KDF block. This is a permanent, additive
+  extension point for future per-container metadata — no further version
+  bumps are needed for additive fields.
+
 ## [2.0.0] - 2026-07-10
 
 **Breaking release.** Hardens the library under a documented private/at-rest

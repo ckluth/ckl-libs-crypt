@@ -87,6 +87,48 @@ public class CryptoServiceFileIntegrationTests
     }
 
     [Test]
+    public void EncryptFile_ThenDecryptFile_RestoresOriginalTimestamps()
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        var sourcePath = Path.Combine(_tempDirectory, "source.txt");
+        var encryptedPath = Path.Combine(_tempDirectory, "source.enc");
+        var decryptedPath = Path.Combine(_tempDirectory, "source.decrypted.txt");
+        File.WriteAllText(sourcePath, "content");
+
+        var created = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var modified = new DateTime(2021, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+        var accessed = new DateTime(2022, 11, 12, 13, 14, 15, DateTimeKind.Utc);
+        File.SetCreationTimeUtc(sourcePath, created);
+        File.SetLastWriteTimeUtc(sourcePath, modified);
+        File.SetLastAccessTimeUtc(sourcePath, accessed);
+
+        Assert.That(CryptoService.EncryptFile(sourcePath, encryptedPath, key).Succeeded, Is.True);
+        Assert.That(CryptoService.DecryptFile(encryptedPath, decryptedPath, key).Succeeded, Is.True);
+
+        Assert.That(File.GetCreationTimeUtc(decryptedPath), Is.EqualTo(created));
+        Assert.That(File.GetLastWriteTimeUtc(decryptedPath), Is.EqualTo(modified));
+        Assert.That(File.GetLastAccessTimeUtc(decryptedPath), Is.EqualTo(accessed));
+    }
+
+    [Test]
+    public void EncryptFile_WithCaptureLastAccessTimeFalse_OmitsLastAccessTimeOnRestore()
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        var sourcePath = Path.Combine(_tempDirectory, "source.txt");
+        var encryptedPath = Path.Combine(_tempDirectory, "source.enc");
+        var decryptedPath = Path.Combine(_tempDirectory, "source.decrypted.txt");
+        File.WriteAllText(sourcePath, "content");
+        File.SetLastAccessTimeUtc(sourcePath, new DateTime(2022, 11, 12, 13, 14, 15, DateTimeKind.Utc));
+
+        Assert.That(CryptoService.EncryptFile(sourcePath, encryptedPath, key, captureLastAccessTime: false).Succeeded, Is.True);
+        var lastAccessBeforeDecrypt = DateTime.UtcNow;
+        Assert.That(CryptoService.DecryptFile(encryptedPath, decryptedPath, key).Succeeded, Is.True);
+
+        Assert.That(File.GetLastAccessTimeUtc(decryptedPath), Is.Not.EqualTo(new DateTime(2022, 11, 12, 13, 14, 15, DateTimeKind.Utc)));
+        Assert.That(File.GetLastAccessTimeUtc(decryptedPath), Is.GreaterThanOrEqualTo(lastAccessBeforeDecrypt.AddSeconds(-1)));
+    }
+
+    [Test]
     public void EncryptFile_ThenDecryptFile_WithPassword_RoundTripsOriginalContent()
     {
         var sourcePath = Path.Combine(_tempDirectory, "source.txt");

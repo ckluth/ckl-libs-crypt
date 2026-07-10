@@ -56,6 +56,63 @@ public class CryptoServiceFolderIntegrationTests
     }
 
     [Test]
+    public void EncryptFolder_ThenDecryptFolder_RestoresOriginalTimestamps()
+    {
+        SeedNestedFiles();
+        var key = RandomNumberGenerator.GetBytes(32);
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+
+        var rootModified = new DateTime(2019, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        var rootFilePath = Path.Combine(_sourceFolder, "root.txt");
+        var rootFileModified = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var subFolder = Path.Combine(_sourceFolder, "sub");
+        var subFolderModified = new DateTime(2020, 5, 6, 7, 8, 9, DateTimeKind.Utc);
+        var nestedFilePath = Path.Combine(subFolder, "nested.txt");
+        var nestedFileModified = new DateTime(2021, 6, 7, 8, 9, 10, DateTimeKind.Utc);
+
+        Directory.SetLastWriteTimeUtc(_sourceFolder, rootModified);
+        File.SetLastWriteTimeUtc(rootFilePath, rootFileModified);
+        Directory.SetLastWriteTimeUtc(subFolder, subFolderModified);
+        File.SetLastWriteTimeUtc(nestedFilePath, nestedFileModified);
+
+        var encryptResult = CryptoService.EncryptFolder(_sourceFolder, encryptedPath, key);
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFolder(encryptedPath, _destinationFolder, key);
+        Assert.That(decryptResult.Succeeded, Is.True);
+
+        Assert.That(Directory.GetLastWriteTimeUtc(_destinationFolder), Is.EqualTo(rootModified));
+        Assert.That(File.GetLastWriteTimeUtc(Path.Combine(_destinationFolder, "root.txt")), Is.EqualTo(rootFileModified));
+        Assert.That(Directory.GetLastWriteTimeUtc(Path.Combine(_destinationFolder, "sub")), Is.EqualTo(subFolderModified));
+        Assert.That(File.GetLastWriteTimeUtc(Path.Combine(_destinationFolder, "sub", "nested.txt")), Is.EqualTo(nestedFileModified));
+    }
+
+    [Test]
+    public void EncryptFolder_SourceContainsReservedManifestName_ReturnsFailedResult()
+    {
+        SeedNestedFiles();
+        File.WriteAllText(Path.Combine(_sourceFolder, "__ckl_timestamps.json"), "{}");
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+
+        var encryptResult = CryptoService.EncryptFolder(_sourceFolder, encryptedPath, RandomNumberGenerator.GetBytes(32));
+
+        Assert.That(encryptResult.Succeeded, Is.False);
+    }
+
+    [Test]
+    public void DecryptFolder_RestoresContentWithoutLeakingTimestampManifest()
+    {
+        SeedNestedFiles();
+        var key = RandomNumberGenerator.GetBytes(32);
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+
+        Assert.That(CryptoService.EncryptFolder(_sourceFolder, encryptedPath, key).Succeeded, Is.True);
+        Assert.That(CryptoService.DecryptFolder(encryptedPath, _destinationFolder, key).Succeeded, Is.True);
+
+        Assert.That(File.Exists(Path.Combine(_destinationFolder, "__ckl_timestamps.json")), Is.False);
+    }
+
+    [Test]
     public void DecryptFolder_WrongKey_ReturnsFailedResult()
     {
         SeedNestedFiles();

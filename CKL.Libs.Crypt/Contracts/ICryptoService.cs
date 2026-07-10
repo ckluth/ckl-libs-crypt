@@ -53,45 +53,55 @@ public interface ICryptoService
 
     /// <summary>
     /// Compresses then encrypts <paramref name="sourceFilePath"/> into
-    /// <paramref name="destinationFilePath"/>, streaming throughout (no full-file buffering).
+    /// <paramref name="destinationFilePath"/>, streaming throughout (no full-file buffering). The
+    /// source file's <c>CreationTime</c>/<c>LastWriteTime</c>/<c>LastAccessTime</c> are captured and
+    /// restored on decrypt (see ADR 0010); pass <paramref name="captureLastAccessTime"/> as
+    /// <c>false</c> to omit <c>LastAccessTime</c>.
     /// </summary>
-    static abstract Result EncryptFile(string sourceFilePath, string destinationFilePath, byte[] key);
+    static abstract Result EncryptFile(string sourceFilePath, string destinationFilePath, byte[] key, bool captureLastAccessTime = true);
 
     /// <summary>
-    /// Password-based overload of <see cref="EncryptFile(string, string, byte[])"/>: derives the key
+    /// Password-based overload of <see cref="EncryptFile(string, string, byte[], bool)"/>: derives the key
     /// via PBKDF2 and writes a self-contained container header at the front of the destination file.
     /// </summary>
-    static abstract Result EncryptFile(string sourceFilePath, string destinationFilePath, string password);
+    static abstract Result EncryptFile(string sourceFilePath, string destinationFilePath, string password, bool captureLastAccessTime = true);
 
-    /// <summary>Reverses <see cref="EncryptFile(string, string, byte[])"/>: decrypts then decompresses.</summary>
+    /// <summary>
+    /// Reverses <see cref="EncryptFile(string, string, byte[], bool)"/>: decrypts then decompresses,
+    /// restoring the original <c>CreationTime</c>/<c>LastWriteTime</c>/<c>LastAccessTime</c> when the
+    /// container carries them (see ADR 0010).
+    /// </summary>
     static abstract Result DecryptFile(string sourceFilePath, string destinationFilePath, byte[] key);
 
-    /// <summary>Reverses <see cref="EncryptFile(string, string, string)"/>: reads the header, re-derives the key, then decrypts and decompresses.</summary>
+    /// <summary>Reverses <see cref="EncryptFile(string, string, string, bool)"/>: reads the header, re-derives the key, then decrypts and decompresses.</summary>
     static abstract Result DecryptFile(string sourceFilePath, string destinationFilePath, string password);
 
     /// <summary>
     /// Zips <paramref name="sourceFolderPath"/> and encrypts the archive into
     /// <paramref name="destinationFilePath"/> as a single output file. The intermediate plaintext
     /// zip is staged in <paramref name="workingDirectory"/> when supplied, otherwise in a per-user
-    /// restricted-ACL workspace (not the shared temp directory).
+    /// restricted-ACL workspace (not the shared temp directory). The original
+    /// <c>CreationTime</c>/<c>LastWriteTime</c>/<c>LastAccessTime</c> of the root folder, every
+    /// subdirectory, and every file are captured and restored on decrypt (see ADR 0010); pass
+    /// <paramref name="captureLastAccessTime"/> as <c>false</c> to omit <c>LastAccessTime</c>.
     /// </summary>
-    static abstract Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key, string? workingDirectory = null);
+    static abstract Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key, string? workingDirectory = null, bool captureLastAccessTime = true);
 
     /// <summary>
-    /// Password-based overload of <see cref="EncryptFolder(string, string, byte[], string?)"/>: derives the key
+    /// Password-based overload of <see cref="EncryptFolder(string, string, byte[], string?, bool)"/>: derives the key
     /// via PBKDF2 and writes a self-contained container header at the front of the destination file.
     /// </summary>
-    static abstract Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, string? workingDirectory = null);
+    static abstract Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, string? workingDirectory = null, bool captureLastAccessTime = true);
 
     /// <summary>
-    /// Reverses <see cref="EncryptFolder(string, string, byte[], string?)"/>: decrypts then extracts the archive into
+    /// Reverses <see cref="EncryptFolder(string, string, byte[], string?, bool)"/>: decrypts then extracts the archive into
     /// <paramref name="destinationFolderPath"/>. The intermediate plaintext zip is staged in
     /// <paramref name="workingDirectory"/> when supplied, otherwise in a per-user restricted-ACL
     /// workspace.
     /// </summary>
     static abstract Result DecryptFolder(string sourceFilePath, string destinationFolderPath, byte[] key, string? workingDirectory = null);
 
-    /// <summary>Reverses <see cref="EncryptFolder(string, string, string, string?)"/>: reads the header, re-derives the key, then decrypts and extracts.</summary>
+    /// <summary>Reverses <see cref="EncryptFolder(string, string, string, string?, bool)"/>: reads the header, re-derives the key, then decrypts and extracts.</summary>
     static abstract Result DecryptFolder(string sourceFilePath, string destinationFolderPath, string password, string? workingDirectory = null);
 
     /// <summary>

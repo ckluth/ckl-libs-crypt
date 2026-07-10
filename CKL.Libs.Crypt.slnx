@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CKL.Libs.Crypt/CKL.Libs.Crypt.csproj" />
+  <Project Path="CKL.Libs.Crypt.Tests/CKL.Libs.Crypt.Tests.csproj" />
+</Solution>

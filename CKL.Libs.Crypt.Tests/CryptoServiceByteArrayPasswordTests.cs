@@ -41,7 +41,7 @@ public class CryptoServiceByteArrayPasswordTests
     }
 
     [Test]
-    public void Decrypt_WithPassword_CipherTooShortToContainSaltAndIv_ReturnsFailedResult()
+    public void Decrypt_WithPassword_InputTooShortToContainHeader_ReturnsFailedResult()
     {
         var decryptResult = CryptoService.Decrypt([1, 2, 3], "pw");
 

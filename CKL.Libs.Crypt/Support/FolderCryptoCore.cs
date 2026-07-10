@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Security.Cryptography;
 
 namespace CKL.Libs.Crypt.Support;
 
@@ -14,12 +13,9 @@ internal static class FolderCryptoCore
     /// <summary>Encrypts the archive at <paramref name="zipPath"/> into an already-open stream.</summary>
     internal static void EncryptZipToStream(string zipPath, Stream destinationStream, byte[] key, CryptoHeader header)
     {
-        header.WriteTo(destinationStream);
         using var zipStream = File.OpenRead(zipPath);
-        using var aes = AesCryptoCore.CreateAes(key, header.Iv);
-        using var encryptor = aes.CreateEncryptor();
-        using var cryptoStream = new CryptoStream(destinationStream, encryptor, CryptoStreamMode.Write, leaveOpen: true);
-        zipStream.CopyTo(cryptoStream);
+        using var encryptor = AesCryptoCore.CreateEncryptor(destinationStream, key, header, leaveOpen: true);
+        zipStream.CopyTo(encryptor);
     }
 
     /// <summary>
@@ -28,13 +24,12 @@ internal static class FolderCryptoCore
     /// </summary>
     internal static void DecryptStreamToZip(Stream sourceStream, string zipPath, Func<CryptoHeader, byte[]> resolveKey)
     {
-        var header = CryptoHeader.ReadFrom(sourceStream);
-        var key = resolveKey(header);
-        using var aes = AesCryptoCore.CreateAes(key, header.Iv);
-        using var decryptor = aes.CreateDecryptor();
-        using var cryptoStream = new CryptoStream(sourceStream, decryptor, CryptoStreamMode.Read, leaveOpen: true);
-        using var zipStream = File.Create(zipPath);
-        cryptoStream.CopyTo(zipStream);
+        var (_, plaintext) = AesCryptoCore.CreateDecryptor(sourceStream, resolveKey, leaveOpen: true);
+        using (plaintext)
+        using (var zipStream = File.Create(zipPath))
+        {
+            plaintext.CopyTo(zipStream);
+        }
     }
 
     /// <summary>

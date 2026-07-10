@@ -10,9 +10,9 @@
 		<AssemblyName>CKL.Libs.Crypt</AssemblyName>
 		<RootNamespace>CKL.Libs.Crypt</RootNamespace>
 		<PlatformTarget>AnyCPU</PlatformTarget>
-		<Version>2.1.0</Version>
+		<Version>3.0.0</Version>
 		<Authors>ckluth</Authors>
-		<Description>Encryption for strings, byte arrays, files, and folders — currently symmetric (AES), reported via the Result pattern.</Description>
+		<Description>Authenticated encryption for strings, byte arrays, files, and folders — symmetric AES-256-GCM, reported via the Result pattern.</Description>
 		<PackageId>CKL.Libs.Crypt</PackageId>
 		<RepositoryType>git</RepositoryType>
 		<PackageProjectUrl>https://github.com/ckluth/ckl-libs-crypt</PackageProjectUrl>

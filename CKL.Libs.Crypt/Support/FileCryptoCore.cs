@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Security.Cryptography;
 
 namespace CKL.Libs.Crypt.Support;
 
@@ -19,13 +18,13 @@ internal static class FileCryptoCore
     {
         var info = new FileInfo(sourceFilePath);
         header = header.WithTimestamps(info.CreationTimeUtc, info.LastWriteTimeUtc, captureLastAccessTime ? info.LastAccessTimeUtc : null);
-        header.WriteTo(destinationStream);
+
         using var sourceStream = File.OpenRead(sourceFilePath);
-        using var aes = AesCryptoCore.CreateAes(key, header.Iv);
-        using var encryptor = aes.CreateEncryptor();
-        using var cryptoStream = new CryptoStream(destinationStream, encryptor, CryptoStreamMode.Write, leaveOpen: true);
-        using var gzipStream = new GZipStream(cryptoStream, CompressionMode.Compress);
-        sourceStream.CopyTo(gzipStream);
+        using var encryptor = AesCryptoCore.CreateEncryptor(destinationStream, key, header, leaveOpen: true);
+        using (var gzipStream = new GZipStream(encryptor, CompressionMode.Compress, leaveOpen: true))
+        {
+            sourceStream.CopyTo(gzipStream);
+        }
     }
 
     /// <summary>
@@ -35,15 +34,21 @@ internal static class FileCryptoCore
     /// </summary>
     internal static void DecryptStreamToFile(Stream sourceStream, string destinationFilePath, Func<CryptoHeader, byte[]> resolveKey)
     {
-        var header = CryptoHeader.ReadFrom(sourceStream);
-        var key = resolveKey(header);
-        using (var aes = AesCryptoCore.CreateAes(key, header.Iv))
-        using (var decryptor = aes.CreateDecryptor())
-        using (var cryptoStream = new CryptoStream(sourceStream, decryptor, CryptoStreamMode.Read, leaveOpen: true))
-        using (var gzipStream = new GZipStream(cryptoStream, CompressionMode.Decompress))
-        using (var destinationStream = File.Create(destinationFilePath))
+        var (header, plaintext) = AesCryptoCore.CreateDecryptor(sourceStream, resolveKey, leaveOpen: true);
+        try
         {
-            gzipStream.CopyTo(destinationStream);
+            using (var gzipStream = new GZipStream(plaintext, CompressionMode.Decompress, leaveOpen: true))
+            using (var destinationStream = File.Create(destinationFilePath))
+            {
+                gzipStream.CopyTo(destinationStream);
+            }
+
+            // Drain any framed chunks the decompressor didn't pull, so the final chunk's tag is verified.
+            plaintext.CopyTo(Stream.Null);
+        }
+        finally
+        {
+            plaintext.Dispose();
         }
 
         TimestampRestorer.Apply(destinationFilePath, header);

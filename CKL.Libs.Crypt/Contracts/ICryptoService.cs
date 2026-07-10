@@ -3,17 +3,22 @@ using CKL.Libs.ResultPattern;
 namespace CKL.Libs.Crypt.Contracts;
 
 /// <summary>
-/// Encryption for strings, byte arrays, files, and folders — currently symmetric (AES-CBC/PKCS7),
-/// reporting outcomes as <see cref="Result"/>/<see cref="Result{TValue}"/> rather than exceptions.
+/// Encryption for strings, byte arrays, files, and folders — authenticated symmetric encryption
+/// (AES-256-GCM), reporting outcomes as <see cref="Result"/>/<see cref="Result{TValue}"/> rather
+/// than exceptions.
 /// </summary>
 /// <remarks>
-/// <para><b>Scope &amp; threat model.</b> This library provides <i>confidentiality</i> for data at
-/// rest in a private, single-user context: you encrypt your own data and decrypt it yourself. It
-/// deliberately does <b>not</b> provide integrity — ciphertext tampering is not detected — and it
-/// assumes no adversary can submit chosen ciphertexts to a decryptor and observe the outcome. Do
-/// <b>not</b> rely on it to detect tampering, and do <b>not</b> expose it as a decryption service
-/// that reports success/failure on attacker-supplied input; either changes the threat model and
-/// requires authenticated encryption instead. See ADR 0009 for the full rationale.</para>
+/// <para><b>Scope &amp; threat model.</b> This library provides <i>confidentiality</i> <b>and
+/// integrity</b> for data at rest in a private, single-user context: you encrypt your own data and
+/// decrypt it yourself. Encryption is authenticated (AES-256-GCM, framed into fixed-size chunks
+/// each with its own authentication tag), so both <b>tampering and silent corruption</b> (bit rot,
+/// a bad sync/backup round-trip) are detected — a modified or damaged container fails decryption
+/// cleanly and uniformly rather than yielding wrong plaintext. The confidentiality-first,
+/// single-user framing is retained: it still assumes you are not exposing an interactive decryption
+/// oracle to an adversary, though a failed authentication tag now makes the outcome a single,
+/// constant "decryption failed" signal. See ADR 0011 (which revises ADR 0009) for the full
+/// rationale. <b>Format note:</b> v3.0.0 is a breaking change — containers written by v2.x
+/// (unauthenticated AES-CBC) are not readable, and no ciphertext existed in the wild.</para>
 /// <para>Password-based overloads derive a key with PBKDF2-HMAC-SHA256 (600,000 iterations,
 /// 32-byte/AES-256 key) and write a self-describing container header, so decryption needs only the
 /// original password.</para>

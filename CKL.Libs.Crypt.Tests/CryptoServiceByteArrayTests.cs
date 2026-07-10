@@ -46,7 +46,7 @@ public class CryptoServiceByteArrayTests
     }
 
     [Test]
-    public void Decrypt_CipherShorterThanIv_ReturnsFailedResult()
+    public void Decrypt_InputShorterThanHeader_ReturnsFailedResult()
     {
         var decryptResult = CryptoService.Decrypt([1, 2, 3], NewKey());
 

@@ -255,12 +255,12 @@ public sealed class CryptoService : ICryptoService
     }
 
     private static CryptoHeader RawKeyHeader() =>
-        CryptoHeader.ForRawKey(AesCryptoCore.GenerateIv());
+        CryptoHeader.ForRawKey(AesCryptoCore.GenerateNonceBase());
 
     private static (byte[] Key, CryptoHeader Header) PasswordHeader(string password)
     {
         var (key, salt) = KeyDerivation.DeriveForNewSalt(password);
-        var header = CryptoHeader.ForPbkdf2(KeyDerivation.DefaultIterations, KeyDerivation.KeySize, salt, AesCryptoCore.GenerateIv());
+        var header = CryptoHeader.ForPbkdf2(KeyDerivation.DefaultIterations, KeyDerivation.KeySize, salt, AesCryptoCore.GenerateNonceBase());
         return (key, header);
     }
 

@@ -81,11 +81,31 @@ check `.Succeeded` before using `.Value`; on failure, `.ErrorMessage` and
 ## How it works
 
 - **Container header** — every ciphertext (string, byte array, file, or folder)
-  is prefixed with a small, self-describing header: a `"CKLC"` magic, a format
-  version, the key-derivation id and its parameters (for the password path:
-  iteration count, key size, and salt), and the per-encryption 16-byte AES-CBC
-  IV. The header is cleartext and **not** authenticated (no integrity — see
-  *Scope & threat model*).
+  is prefixed with a small, self-describing header. The header is cleartext and
+  **not** authenticated (no integrity — see *Scope & threat model*):
+
+  ```
+  [ magic:       4 bytes ]  "CKLC"
+  [ version:     1 byte  ]  0x02  ← unchanged
+  [ flags:       1 byte  ]  bit 0 = timestamps present
+                            bit 1 = LastAccessTime omitted (written as 0, ignored on restore)
+  [ kdf block …          ]  unchanged from v2.0.0
+    — kdf-id 0x00 = none (raw key)
+    — kdf-id 0x01 = PBKDF2-HMAC-SHA256:
+        [ iterations: 4 bytes ]  big-endian uint32
+        [ key-size:   1 byte  ]  32
+        [ salt-len:   1 byte  ]  16
+        [ salt:       N bytes ]
+  — if flags bit 0 set:
+      [ created:   8 bytes ]  DateTimeOffset UTC ticks, Int64 big-endian
+      [ modified:  8 bytes ]  DateTimeOffset UTC ticks, Int64 big-endian
+      [ accessed:  8 bytes ]  DateTimeOffset UTC ticks, Int64 big-endian (0 if bit 1 set)
+  [ iv:          16 bytes ]  per-encryption AES-CBC IV
+  [ ciphertext:  …       ]
+  ```
+
+  A v2.0.0 container (`flags = 0x00`) remains fully readable; the timestamp
+  block is simply absent.
 - **Strings/byte arrays** — AES-CBC with PKCS7 padding; a random IV per
   encryption, carried in the header.
 - **Files** — compressed (GZip), then encrypted, streaming from source to

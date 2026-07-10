@@ -18,8 +18,7 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            var plainBytes = Encoding.UTF8.GetBytes(plainText);
-            var cipherBytes = AesCryptoCore.Encrypt(plainBytes, key);
+            var cipherBytes = AesCryptoCore.EncryptWithHeader(Encoding.UTF8.GetBytes(plainText), key, RawKeyHeader());
             return Convert.ToBase64String(cipherBytes);
         }
         catch (Exception ex)
@@ -29,14 +28,13 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result<string> EncryptString(string plainText, string password, int iterations = 100_000, int keySize = 32)
+    public static Result<string> EncryptString(string plainText, string password)
     {
         try
         {
-            var (key, salt) = KeyDerivation.DeriveFromPassword(password, iterations, keySize);
-            var plainBytes = Encoding.UTF8.GetBytes(plainText);
-            var cipherBytes = AesCryptoCore.Encrypt(plainBytes, key);
-            return Convert.ToBase64String(KeyDerivation.Prepend(salt, cipherBytes));
+            var (key, header) = PasswordHeader(password);
+            var cipherBytes = AesCryptoCore.EncryptWithHeader(Encoding.UTF8.GetBytes(plainText), key, header);
+            return Convert.ToBase64String(cipherBytes);
         }
         catch (Exception ex)
         {
@@ -49,8 +47,7 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            var cipherBytes = Convert.FromBase64String(cipherText);
-            var plainBytes = AesCryptoCore.Decrypt(cipherBytes, key);
+            var plainBytes = AesCryptoCore.DecryptWithHeader(Convert.FromBase64String(cipherText), _ => key);
             return Encoding.UTF8.GetString(plainBytes);
         }
         catch (Exception ex)
@@ -60,13 +57,11 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result<string> DecryptString(string cipherText, string password, int iterations = 100_000, int keySize = 32)
+    public static Result<string> DecryptString(string cipherText, string password)
     {
         try
         {
-            var (salt, cipherBytes) = KeyDerivation.SplitSaltAndPayload(Convert.FromBase64String(cipherText));
-            var key = KeyDerivation.DeriveFromPassword(password, salt, iterations, keySize);
-            var plainBytes = AesCryptoCore.Decrypt(cipherBytes, key);
+            var plainBytes = AesCryptoCore.DecryptWithHeader(Convert.FromBase64String(cipherText), ResolveKey(password));
             return Encoding.UTF8.GetString(plainBytes);
         }
         catch (Exception ex)
@@ -80,7 +75,7 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            return AesCryptoCore.Encrypt(plainBytes, key);
+            return AesCryptoCore.EncryptWithHeader(plainBytes, key, RawKeyHeader());
         }
         catch (Exception ex)
         {
@@ -89,13 +84,12 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result<byte[]> Encrypt(byte[] plainBytes, string password, int iterations = 100_000, int keySize = 32)
+    public static Result<byte[]> Encrypt(byte[] plainBytes, string password)
     {
         try
         {
-            var (key, salt) = KeyDerivation.DeriveFromPassword(password, iterations, keySize);
-            var cipherBytes = AesCryptoCore.Encrypt(plainBytes, key);
-            return KeyDerivation.Prepend(salt, cipherBytes);
+            var (key, header) = PasswordHeader(password);
+            return AesCryptoCore.EncryptWithHeader(plainBytes, key, header);
         }
         catch (Exception ex)
         {
@@ -108,7 +102,7 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            return AesCryptoCore.Decrypt(cipherBytes, key);
+            return AesCryptoCore.DecryptWithHeader(cipherBytes, _ => key);
         }
         catch (Exception ex)
         {
@@ -117,13 +111,11 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result<byte[]> Decrypt(byte[] cipherBytes, string password, int iterations = 100_000, int keySize = 32)
+    public static Result<byte[]> Decrypt(byte[] cipherBytes, string password)
     {
         try
         {
-            var (salt, payload) = KeyDerivation.SplitSaltAndPayload(cipherBytes);
-            var key = KeyDerivation.DeriveFromPassword(password, salt, iterations, keySize);
-            return AesCryptoCore.Decrypt(payload, key);
+            return AesCryptoCore.DecryptWithHeader(cipherBytes, ResolveKey(password));
         }
         catch (Exception ex)
         {
@@ -136,7 +128,8 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            FileCryptoCore.EncryptFile(sourceFilePath, destinationFilePath, key);
+            using var destinationStream = File.Create(destinationFilePath);
+            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, RawKeyHeader());
             return Result.Success;
         }
         catch (Exception ex)
@@ -146,14 +139,13 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, string password, int iterations = 100_000, int keySize = 32)
+    public static Result EncryptFile(string sourceFilePath, string destinationFilePath, string password)
     {
         try
         {
-            var (key, salt) = KeyDerivation.DeriveFromPassword(password, iterations, keySize);
+            var (key, header) = PasswordHeader(password);
             using var destinationStream = File.Create(destinationFilePath);
-            destinationStream.Write(salt, 0, salt.Length);
-            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key);
+            FileCryptoCore.EncryptFileToStream(sourceFilePath, destinationStream, key, header);
             return Result.Success;
         }
         catch (Exception ex)
@@ -167,7 +159,8 @@ public sealed class CryptoService : ICryptoService
     {
         try
         {
-            FileCryptoCore.DecryptFile(sourceFilePath, destinationFilePath, key);
+            using var sourceStream = File.OpenRead(sourceFilePath);
+            FileCryptoCore.DecryptStreamToFile(sourceStream, destinationFilePath, _ => key);
             return Result.Success;
         }
         catch (Exception ex)
@@ -177,14 +170,12 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result DecryptFile(string sourceFilePath, string destinationFilePath, string password, int iterations = 100_000, int keySize = 32)
+    public static Result DecryptFile(string sourceFilePath, string destinationFilePath, string password)
     {
         try
         {
             using var sourceStream = File.OpenRead(sourceFilePath);
-            var salt = KeyDerivation.ReadSalt(sourceStream);
-            var key = KeyDerivation.DeriveFromPassword(password, salt, iterations, keySize);
-            FileCryptoCore.DecryptStreamToFile(sourceStream, destinationFilePath, key);
+            FileCryptoCore.DecryptStreamToFile(sourceStream, destinationFilePath, ResolveKey(password));
             return Result.Success;
         }
         catch (Exception ex)
@@ -194,11 +185,11 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key)
+    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, byte[] key, string? workingDirectory = null)
     {
         try
         {
-            FolderCryptoCore.EncryptFolder(sourceFolderPath, destinationFilePath, key);
+            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, RawKeyHeader(), workingDirectory);
             return Result.Success;
         }
         catch (Exception ex)
@@ -208,71 +199,90 @@ public sealed class CryptoService : ICryptoService
     }
 
     /// <inheritdoc />
-    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, int iterations = 100_000, int keySize = 32)
+    public static Result EncryptFolder(string sourceFolderPath, string destinationFilePath, string password, string? workingDirectory = null)
     {
         try
         {
-            var (key, salt) = KeyDerivation.DeriveFromPassword(password, iterations, keySize);
-            FolderCryptoCore.WithTempZip(tempZipPath =>
+            var (key, header) = PasswordHeader(password);
+            EncryptFolderToFile(sourceFolderPath, destinationFilePath, key, header, workingDirectory);
+            return Result.Success;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <inheritdoc />
+    public static Result DecryptFolder(string sourceFilePath, string destinationFolderPath, byte[] key, string? workingDirectory = null)
+    {
+        try
+        {
+            DecryptFileToFolder(sourceFilePath, destinationFolderPath, _ => key, workingDirectory);
+            return Result.Success;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <inheritdoc />
+    public static Result DecryptFolder(string sourceFilePath, string destinationFolderPath, string password, string? workingDirectory = null)
+    {
+        try
+        {
+            DecryptFileToFolder(sourceFilePath, destinationFolderPath, ResolveKey(password), workingDirectory);
+            return Result.Success;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <inheritdoc />
+    public static Result<(byte[] Key, byte[] Salt)> DeriveKeyFromPassword(string password)
+    {
+        try
+        {
+            return KeyDerivation.DeriveForNewSalt(password);
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private static CryptoHeader RawKeyHeader() =>
+        CryptoHeader.ForRawKey(AesCryptoCore.GenerateIv());
+
+    private static (byte[] Key, CryptoHeader Header) PasswordHeader(string password)
+    {
+        var (key, salt) = KeyDerivation.DeriveForNewSalt(password);
+        var header = CryptoHeader.ForPbkdf2(KeyDerivation.DefaultIterations, KeyDerivation.KeySize, salt, AesCryptoCore.GenerateIv());
+        return (key, header);
+    }
+
+    private static Func<CryptoHeader, byte[]> ResolveKey(string password) =>
+        header => KeyDerivation.DeriveFromHeader(password, header);
+
+    private static void EncryptFolderToFile(string sourceFolderPath, string destinationFilePath, byte[] key, CryptoHeader header, string? workingDirectory) =>
+        FolderCryptoCore.WithTempZip(tempZipPath =>
+        {
+            FolderCryptoCore.CreateZip(sourceFolderPath, tempZipPath);
+            using var destinationStream = File.Create(destinationFilePath);
+            FolderCryptoCore.EncryptZipToStream(tempZipPath, destinationStream, key, header);
+        }, workingDirectory);
+
+    private static void DecryptFileToFolder(string sourceFilePath, string destinationFolderPath, Func<CryptoHeader, byte[]> resolveKey, string? workingDirectory) =>
+        FolderCryptoCore.WithTempZip(tempZipPath =>
+        {
+            using (var sourceStream = File.OpenRead(sourceFilePath))
             {
-                FolderCryptoCore.CreateZip(sourceFolderPath, tempZipPath);
-                using var destinationStream = File.Create(destinationFilePath);
-                destinationStream.Write(salt, 0, salt.Length);
-                FolderCryptoCore.EncryptZipToStream(tempZipPath, destinationStream, key);
-            });
-            return Result.Success;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
+                FolderCryptoCore.DecryptStreamToZip(sourceStream, tempZipPath, resolveKey);
+            }
 
-    /// <inheritdoc />
-    public static Result DecryptFolder(string sourceFilePath, string destinationFolderPath, byte[] key)
-    {
-        try
-        {
-            FolderCryptoCore.DecryptFolder(sourceFilePath, destinationFolderPath, key);
-            return Result.Success;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
-
-    /// <inheritdoc />
-    public static Result DecryptFolder(string sourceFilePath, string destinationFolderPath, string password, int iterations = 100_000, int keySize = 32)
-    {
-        try
-        {
-            using var sourceStream = File.OpenRead(sourceFilePath);
-            var salt = KeyDerivation.ReadSalt(sourceStream);
-            var key = KeyDerivation.DeriveFromPassword(password, salt, iterations, keySize);
-            FolderCryptoCore.WithTempZip(tempZipPath =>
-            {
-                FolderCryptoCore.DecryptStreamToZip(sourceStream, tempZipPath, key);
-                FolderCryptoCore.ExtractZip(tempZipPath, destinationFolderPath);
-            });
-            return Result.Success;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
-
-    /// <inheritdoc />
-    public static Result<(byte[] Key, byte[] Salt)> DeriveKeyFromPassword(string password, int iterations = 100_000, int keySize = 32)
-    {
-        try
-        {
-            return KeyDerivation.DeriveFromPassword(password, iterations, keySize);
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-    }
+            FolderCryptoCore.ExtractZip(tempZipPath, destinationFolderPath);
+        }, workingDirectory);
 }

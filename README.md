@@ -10,6 +10,34 @@ repo-family conventions and the decision-trail this repo follows.
 
 ---
 
+## Scope & threat model
+
+**Read this before use.** This library provides **confidentiality** for data at
+rest in a **private, single-user** context: you encrypt your own data and
+decrypt it yourself. Two assumptions are deliberately baked in:
+
+1. **No integrity requirement.** It does **not** detect tampering with
+   ciphertext. AES-CBC is unauthenticated; a modified ciphertext is not caught.
+2. **No interactive decryption oracle.** It assumes no adversary can submit
+   chosen ciphertexts to a decryptor and observe the outcome
+   (success/failure/error/timing).
+
+Under those assumptions the library is a sound at-rest confidentiality tool.
+**Do not** use it where either fails:
+
+- **Do not expose it as a decryption service/API** that decrypts input you did
+  not produce and reports success/failure — that recreates a padding-oracle
+  surface (a *confidentiality* break).
+- **Do not rely on it to detect tampering** — if silent modification of stored
+  ciphertext would be harmful, you need authenticated encryption (e.g. AES-GCM),
+  which this library does not currently provide.
+
+If your context breaks either assumption, this library is the wrong tool as-is.
+The rationale, and the deferred authenticated-encryption path, are recorded in
+`ckl-builder` ADR 0009.
+
+---
+
 ## Quick start
 
 ```csharp
@@ -30,13 +58,15 @@ CryptoService.DecryptFile("document.pdf.enc", "document.pdf", key);
 // Folders — zipped, then encrypted, as a single output file
 CryptoService.EncryptFolder("my-folder", "my-folder.enc", key);
 CryptoService.DecryptFolder("my-folder.enc", "my-folder-restored", key);
+// Optional: stage the intermediate zip in a directory you choose
+CryptoService.EncryptFolder("my-folder", "my-folder.enc", key, workingDirectory: @"D:\scratch");
 
-// Password-based key derivation (PBKDF2)
+// Password-based key derivation (PBKDF2-HMAC-SHA256, 600,000 iterations, AES-256)
 var derived = CryptoService.DeriveKeyFromPassword("a strong passphrase");
 // derived.Value!.Key, derived.Value!.Salt — persist the salt alongside the ciphertext
 
-// Password-based overloads — derive the key internally and prepend the
-// generated salt to the output, so only the original password is needed to decrypt
+// Password-based overloads — derive the key internally and write a self-contained
+// container header, so only the original password is needed to decrypt
 var encryptedWithPw = CryptoService.EncryptString("Hello, CKL!", "a strong passphrase");
 var decryptedWithPw = CryptoService.DecryptString(encryptedWithPw.Value!, "a strong passphrase");
 
@@ -50,18 +80,26 @@ check `.Succeeded` before using `.Value`; on failure, `.ErrorMessage` and
 
 ## How it works
 
-- **Strings/byte arrays** — AES-CBC with PKCS7 padding; a random 16-byte IV
-  is generated per encryption and prefixed to the ciphertext.
+- **Container header** — every ciphertext (string, byte array, file, or folder)
+  is prefixed with a small, self-describing header: a `"CKLC"` magic, a format
+  version, the key-derivation id and its parameters (for the password path:
+  iteration count, key size, and salt), and the per-encryption 16-byte AES-CBC
+  IV. The header is cleartext and **not** authenticated (no integrity — see
+  *Scope & threat model*).
+- **Strings/byte arrays** — AES-CBC with PKCS7 padding; a random IV per
+  encryption, carried in the header.
 - **Files** — compressed (GZip), then encrypted, streaming from source to
   destination without buffering the whole file in memory.
 - **Folders** — zipped (which already compresses), then the archive is
   encrypted as a single output file; decrypting reverses both steps and
-  extracts back into a destination folder.
+  extracts back into a destination folder. The intermediate plaintext zip is
+  staged in a per-user, restricted-ACL workspace (overridable via
+  `workingDirectory`), not the shared temp directory.
 - **Password-based overloads** — every encrypt/decrypt method has a
   `string password` overload. Encrypting derives a random salt + key via
-  PBKDF2 and prepends the salt to the output, ahead of the IV/ciphertext;
-  decrypting reads the salt back off, re-derives the key, and proceeds as
-  usual — no separate salt management needed.
+  PBKDF2-HMAC-SHA256 (600,000 iterations, 32-byte/AES-256 key) and records the
+  salt and parameters in the header; decrypting reads them back, re-derives the
+  key, and proceeds — no separate salt or parameter management needed.
 
 ## For maintainers
 
@@ -73,8 +111,10 @@ CKL.Libs.Crypt\
 ├── Contracts\
 │   └── ICryptoService.cs        # API contract
 └── Support\
+    ├── CryptoHeader.cs          # Versioned container header (format v2)
     ├── AesCryptoCore.cs         # AES-CBC/PKCS7 building blocks
     ├── KeyDerivation.cs         # PBKDF2 password-to-key derivation
+    ├── CryptoWorkspace.cs       # Per-user restricted-ACL staging for folder ops
     ├── FileCryptoCore.cs        # Compress-then-encrypt streaming for files
     └── FolderCryptoCore.cs      # Zip-then-encrypt for folders
 ```

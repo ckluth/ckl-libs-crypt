@@ -10,7 +10,7 @@
 		<AssemblyName>CKL.Libs.Crypt</AssemblyName>
 		<RootNamespace>CKL.Libs.Crypt</RootNamespace>
 		<PlatformTarget>AnyCPU</PlatformTarget>
-		<Version>1.0.0</Version>
+		<Version>2.0.0</Version>
 		<Authors>ckluth</Authors>
 		<Description>Encryption for strings, byte arrays, files, and folders — currently symmetric (AES), reported via the Result pattern.</Description>
 		<PackageId>CKL.Libs.Crypt</PackageId>

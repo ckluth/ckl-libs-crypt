@@ -97,6 +97,24 @@ public class CryptoServiceFolderIntegrationTests
     }
 
     [Test]
+    public void EncryptFolder_ThenDecryptFolder_WithWorkingDirectoryOverride_RoundTripsNestedStructure()
+    {
+        SeedNestedFiles();
+        var key = RandomNumberGenerator.GetBytes(32);
+        var encryptedPath = Path.Combine(_tempDirectory, "folder.enc");
+        var workingDirectory = Path.Combine(_tempDirectory, "staging");
+
+        var encryptResult = CryptoService.EncryptFolder(_sourceFolder, encryptedPath, key, workingDirectory);
+        Assert.That(encryptResult.Succeeded, Is.True);
+
+        var decryptResult = CryptoService.DecryptFolder(encryptedPath, _destinationFolder, key, workingDirectory);
+
+        Assert.That(decryptResult.Succeeded, Is.True);
+        Assert.That(File.ReadAllText(Path.Combine(_destinationFolder, "root.txt")), Is.EqualTo("root file"));
+        Assert.That(File.ReadAllText(Path.Combine(_destinationFolder, "sub", "nested.txt")), Is.EqualTo("nested file"));
+    }
+
+    [Test]
     public void DecryptFolder_WithPassword_WrongPassword_ReturnsFailedResult()
     {
         SeedNestedFiles();
